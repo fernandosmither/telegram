@@ -376,6 +376,23 @@ func (tc *TelegramClient) transferMediaToTelegram(ctx context.Context, content *
 	}, nil
 }
 
+// viewOnceTTL is the special TTL value that Telegram uses for view-once media.
+const viewOnceTTL = 2147483647
+
+func makeViewOnce(media tg.InputMediaClass, msgType event.MessageType) error {
+	switch typedMedia := media.(type) {
+	case *tg.InputMediaUploadedPhoto:
+		typedMedia.SetTTLSeconds(viewOnceTTL)
+		return nil
+	case *tg.InputMediaUploadedDocument:
+		if msgType == event.MsgVideo && strings.HasPrefix(typedMedia.MimeType, "video/") {
+			typedMedia.SetTTLSeconds(viewOnceTTL)
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: only photos and videos can be sent as view-once", bridgev2.ErrViewOnceNotAllowed)
+}
+
 func (tc *TelegramClient) humaniseSendError(err error) error {
 	if err == nil {
 		return nil
@@ -540,6 +557,11 @@ func (tc *TelegramClient) HandleMatrixMessage(ctx context.Context, msg *bridgev2
 			media, err = tc.transferMediaToTelegram(ctx, msg.Content, false, false, forceDocument)
 			if err != nil {
 				return nil, err
+			}
+			if msg.Content.BeeperViewOnce {
+				if err = makeViewOnce(media, msg.Content.MsgType); err != nil {
+					return nil, err
+				}
 			}
 			updates, err = tc.client.API().MessagesSendMedia(ctx, &tg.MessagesSendMediaRequest{
 				Peer:     peer,

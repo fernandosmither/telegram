@@ -64,7 +64,7 @@ func (tc *TelegramConnector) GetCapabilities() *bridgev2.NetworkGeneralCapabilit
 }
 
 func (tc *TelegramConnector) GetBridgeInfoVersion() (info, capabilities int) {
-	return 1, 11
+	return 1, 12
 }
 
 // TODO get these from getConfig instead of hardcoding?
@@ -165,6 +165,7 @@ var fileCaps = event.FileFeatureMap{
 	},
 }
 var premiumFileCaps event.FileFeatureMap
+var dmFileCaps, premiumDMFileCaps event.FileFeatureMap
 
 func init() {
 	premiumFileCaps = make(event.FileFeatureMap, len(fileCaps))
@@ -176,6 +177,16 @@ func init() {
 		cloned.MaxCaptionLength *= 2
 		premiumFileCaps[k] = cloned
 	}
+	dmFileCaps = withViewOnce(fileCaps)
+	premiumDMFileCaps = withViewOnce(premiumFileCaps)
+}
+
+// withViewOnce enables view-once photos and videos, which Telegram only allows in private chats.
+func withViewOnce(caps event.FileFeatureMap) event.FileFeatureMap {
+	caps = caps.Clone()
+	caps[event.MsgImage].ViewOnce = true
+	caps[event.MsgVideo].ViewOnce = true
+	return caps
 }
 
 func hashEmojiList(emojis []string) string {
@@ -214,7 +225,7 @@ func makeTimerList() []jsontime.Milliseconds {
 var telegramTimers = makeTimerList()
 
 func (tc *TelegramClient) GetCapabilities(ctx context.Context, portal *bridgev2.Portal) *event.RoomFeatures {
-	baseID := "fi.mau.telegram.capabilities.2026_05_27"
+	baseID := "fi.mau.telegram.capabilities.2026_09_27"
 	feat := &event.RoomFeatures{
 		Formatting:          formattingCaps,
 		File:                fileCaps,
@@ -258,7 +269,8 @@ func (tc *TelegramClient) GetCapabilities(ctx context.Context, portal *bridgev2.
 	for i, react := range feat.AllowedReactions {
 		feat.AllowedReactions[i] = variationselector.Add(react)
 	}
-	if tc.isPremiumCache.Load() {
+	isPremium := tc.isPremiumCache.Load()
+	if isPremium {
 		baseID += "+premium"
 		feat.File = premiumFileCaps
 		feat.ReactionCount = 3
@@ -290,6 +302,10 @@ func (tc *TelegramClient) GetCapabilities(ctx context.Context, portal *bridgev2.
 		}
 	case ids.PeerTypeUser:
 		baseID += "+dm"
+		feat.File = dmFileCaps
+		if isPremium {
+			feat.File = premiumDMFileCaps
+		}
 		feat.DeleteChat = true
 		feat.DeleteChatForEveryone = true
 		feat.State = event.StateFeatureMap{
