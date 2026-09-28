@@ -562,7 +562,7 @@ func (tc *TelegramClient) convertMediaRequiringUpload(
 				typeName = "file"
 			}
 
-			if ttl == 2147483647 {
+			if ttl == viewOnceTTL {
 				// This is a view-once message, set a low TTL.
 				ttl = 15
 
@@ -576,6 +576,7 @@ func (tc *TelegramClient) convertMediaRequiringUpload(
 					}
 					return
 				}
+				content.BeeperViewOnce = true
 			}
 
 			disappearingSetting = &database.DisappearingSetting{
